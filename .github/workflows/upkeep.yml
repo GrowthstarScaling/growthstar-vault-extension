@@ -145,7 +145,9 @@ jobs:
           set -o pipefail
           npm ci --no-audit --no-fund
           npx playwright install --with-deps chromium
-          node scripts/smoke-test.mjs ../out/chrome-unpacked ../out/screenshots 2>&1 | tee ../logs/6-smoke.txt
+          # A real window, not headless: the extension's popup never leaves its spinner in
+          # headless Chromium (Bitwarden's own build included), so the display is a virtual one.
+          xvfb-run -a node scripts/smoke-test.mjs ../out/chrome-unpacked ../out/screenshots 2>&1 | tee ../logs/6-smoke.txt
 
       - name: Record the exact source (GPL)
         run: |
