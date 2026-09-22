@@ -147,6 +147,27 @@ try {
     await popup.screenshot({ path: join(SHOTS, '3-after-continue.png') });
   }
 
+  // The pop-up the extension paints INSIDE web pages is the surface people see most.
+  // Best effort: it only appears with autofill on, so a miss is reported, not failed.
+  try {
+    const site = await ctx.newPage();
+    await site.setContent('<html><body><h1>form</h1><form><input name="username" type="text"><input name="password" type="password"></form></body></html>');
+    await site.locator('input[name="username"]').click();
+    await wait(2500);
+    const menu = site.frames().filter((f) => f.url().startsWith('chrome-extension://'));
+    if (menu.length === 0) {
+      console.log('  [in-page menu] did not appear (autofill may be off in a fresh profile)');
+    } else {
+      const text = (await Promise.all(menu.map((f) => f.locator('body').innerText().catch(() => '')))).join(' ');
+      console.log(`  [in-page menu] ${menu.length} frame(s): ${text.replace(/\s+/g, ' ').slice(0, 160)}`);
+      check(!/\bBitwarden\b/.test(text), 'in-page menu never says Bitwarden', `the in-page menu says Bitwarden: ${text.slice(0, 160)}`);
+    }
+    await site.screenshot({ path: join(SHOTS, '4-in-page-menu.png') });
+    await site.close();
+  } catch (e) {
+    console.log(`  [in-page menu] could not be checked: ${e.message}`);
+  }
+
   const bitwarden = [...hosts].filter((h) => /bitwarden\.(com|eu|net)$/.test(h) && h !== 'assets.bitwarden.com');
   check(!bitwarden.length, 'no request to a Bitwarden server', `requests went to Bitwarden: ${bitwarden.join(', ')}`);
   check(!errors.length, 'no page errors', `page errors: ${errors.slice(0, 3).join(' | ')}`);
