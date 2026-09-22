@@ -1,0 +1,218 @@
+# GROWTHSTAR Vault upkeep.
+#
+# Every day: is there a new Bitwarden browser release? If so, brand it, build Chrome, Edge
+# and Firefox, check every build, test the Chrome build in a real browser, and publish a
+# GitHub release. Deterministic end to end. When any step fails, a `needs-coder` issue is
+# opened; the box watcher hands it to the coder agent (docs/UPKEEP.md).
+#
+# Branches named upkeep/* (the coder's fixes) and pull requests are built and tested the
+# same way but never released. A merge to main releases the next build number.
+name: upkeep
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Bitwarden tag to build, e.g. browser-v2026.9.1 (empty = latest release)"
+        required: false
+      release:
+        description: "Publish a GitHub release when it passes"
+        type: boolean
+        default: true
+  push:
+    branches: [main, "upkeep/**"]
+    paths: ["brand/**", "scripts/**", ".github/workflows/**", "package*.json"]
+  pull_request:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: upkeep-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.p.outputs.tag }}
+      version: ${{ steps.p.outputs.version }}
+      build: ${{ steps.p.outputs.build }}
+      release: ${{ steps.p.outputs.release }}
+      skip: ${{ steps.p.outputs.skip }}
+    steps:
+      - id: p
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_RELEASE: ${{ inputs.release }}
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG:-}"
+          if [ -z "$tag" ]; then
+            tag=$(gh api 'repos/bitwarden/clients/releases?per_page=100' \
+              --jq '[.[] | select(.draft|not) | select(.prerelease|not) | select(.tag_name|startswith("browser-v"))][0].tag_name')
+          fi
+          [[ "$tag" =~ ^browser-v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::not a browser release tag: '$tag'"; exit 1; }
+          base="${tag#browser-v}"
+          last=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName --jq '.[].tagName' \
+            | sed -n "s/^v${base//./\\.}\.\([0-9][0-9]*\)$/\1/p" | sort -n | tail -1)
+          skip=false; release=false
+          case "$EVENT" in
+            schedule)          release=true; [ -n "$last" ] && skip=true ;;
+            workflow_dispatch) [ "$INPUT_RELEASE" = "true" ] && release=true ;;
+            push)              [ "$REF" = "refs/heads/main" ] && release=true ;;
+          esac
+          build=$(( ${last:-0} + 1 ))
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "version=$base.$build" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+          echo "Bitwarden $tag -> GROWTHSTAR Vault $base.$build (release=$release, skip=$skip)"
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TAG: ${{ needs.plan.outputs.tag }}
+      VER: ${{ needs.plan.outputs.version }}
+      BUILD: ${{ needs.plan.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: overlay
+
+      - uses: actions/checkout@v4
+        with:
+          repository: bitwarden/clients
+          ref: ${{ needs.plan.outputs.tag }}
+          path: clients
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: clients/.nvmrc
+          cache: npm
+          cache-dependency-path: clients/package-lock.json
+
+      - name: Apply GROWTHSTAR branding
+        run: |
+          mkdir -p logs out
+          set -o pipefail
+          node overlay/scripts/apply-branding.mjs clients --build "$BUILD" 2>&1 | tee logs/1-branding.txt
+
+      - name: Install Bitwarden's dependencies
+        working-directory: clients
+        run: |
+          set -o pipefail
+          npm ci --no-audit --no-fund 2>&1 | tail -40 | tee ../logs/2-install.txt
+
+      - name: Build and check Chrome
+        working-directory: clients/apps/browser
+        run: |
+          set -o pipefail
+          { npm run dist:chrome && node ../../../overlay/scripts/verify-build.mjs build; } 2>&1 | tail -60 | tee ../../../logs/3-chrome.txt
+          cp -r build ../../../out/chrome-unpacked
+          cp dist/dist-chrome.zip "../../../out/growthstar-vault-chrome-$VER.zip"
+
+      - name: Build and check Edge
+        working-directory: clients/apps/browser
+        run: |
+          set -o pipefail
+          { npm run dist:edge && node ../../../overlay/scripts/verify-build.mjs build; } 2>&1 | tail -60 | tee ../../../logs/4-edge.txt
+          cp dist/dist-edge.zip "../../../out/growthstar-vault-edge-$VER.zip"
+
+      - name: Build and check Firefox
+        working-directory: clients/apps/browser
+        run: |
+          set -o pipefail
+          { npm run dist:firefox && node ../../../overlay/scripts/verify-build.mjs build --firefox; } 2>&1 | tail -60 | tee ../../../logs/5-firefox.txt
+          cp dist/dist-firefox.zip "../../../out/growthstar-vault-firefox-$VER.zip"
+
+      - name: Test the Chrome build in a real browser
+        working-directory: overlay
+        run: |
+          set -o pipefail
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          node scripts/smoke-test.mjs ../out/chrome-unpacked ../out/screenshots 2>&1 | tee ../logs/6-smoke.txt
+
+      - name: Record the exact source (GPL)
+        run: |
+          git -C clients diff > "out/growthstar-vault-$VER.patch"
+          {
+            echo "GROWTHSTAR Vault $VER"
+            echo "Upstream: https://github.com/bitwarden/clients/tree/$TAG"
+            echo "Branding: https://github.com/$GITHUB_REPOSITORY/tree/$GITHUB_SHA"
+            echo "The .patch file is every change made to the upstream source for this build."
+          } > out/SOURCE.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: growthstar-vault-${{ needs.plan.outputs.version }}
+          path: |
+            out/*.zip
+            out/*.patch
+            out/SOURCE.txt
+            out/screenshots/
+            logs/
+          retention-days: 30
+
+      - name: Publish the release
+        if: needs.plan.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$VER" \
+            out/growthstar-vault-chrome-$VER.zip out/growthstar-vault-edge-$VER.zip \
+            out/growthstar-vault-firefox-$VER.zip "out/growthstar-vault-$VER.patch" out/SOURCE.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "GROWTHSTAR Vault $VER" \
+            --notes "Built from Bitwarden $TAG with the GROWTHSTAR branding at $GITHUB_SHA. Branded, checked (verify-build) and tested in a real browser (smoke test). Store upload is a separate, approved step."
+
+      - name: Open a pull request for the coder's fix
+        if: startsWith(github.ref, 'refs/heads/upkeep/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          if ! gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --json number --jq '.[0].number' | grep -q .; then
+            gh pr create --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --base main \
+              --title "Upkeep fix: $BRANCH" \
+              --body "The coder agent's fix passed every check: branding, all three builds, and the real-browser test ($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID). Merging releases it."
+          fi
+
+      - name: Hand the failure to the coder
+        if: failure() && (needs.plan.outputs.release == 'true' || startsWith(github.ref, 'refs/heads/upkeep/'))
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Upkeep failed: $TAG"
+          gh label create needs-coder --repo "$GITHUB_REPOSITORY" --color B60205 \
+            --description "Upkeep failed; the box hands this to the coder agent" 2>/dev/null || true
+          {
+            echo "The daily upkeep could not build GROWTHSTAR Vault from Bitwarden **$TAG**."
+            echo
+            echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "Runbook: docs/UPKEEP.md"
+            for f in logs/*.txt; do
+              echo; echo "### $(basename "$f")"; echo '```'; tail -40 "$f"; echo '```'
+            done
+          } > body.md
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label needs-coder --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body-file body.md
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --label needs-coder --body-file body.md
+          fi

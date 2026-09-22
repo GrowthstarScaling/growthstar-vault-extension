@@ -1,0 +1,42 @@
+{
+  "_rule": "Every message that says Bitwarden becomes GROWTHSTAR Vault, in every language, EXCEPT the keys below. 'keep' keys name something that really is Bitwarden's (its separate apps, its help centre, its support, its business products), so they stay true. 'custom' keys get this English text and are removed from every other language, so Chrome falls back to the English line instead of showing a half-translated brand. A key listed here that upstream deletes fails the build, so the list never silently rots.",
+  "keep": [
+    "bitwardenForBusiness",
+    "bitwardenForBusinessPageDesc",
+    "bitwardenAuthenticator",
+    "continueToAuthenticatorPageDesc",
+    "authenticatorAppDescV2",
+    "bitwardenSecretsManager",
+    "continueToSecretsManagerPageDesc",
+    "freeBitwardenFamilies",
+    "freeBitwardenFamiliesPageDesc",
+    "moreFromBitwarden",
+    "helpCenter",
+    "continueToHelpCenterDesc",
+    "communityForums",
+    "contactSupport",
+    "bitwardenSupport",
+    "biometricsFailedDesc",
+    "awaitDesktopDesc",
+    "desktopIntegrationDisabledDesc",
+    "startDesktopTitle",
+    "startDesktopDesc",
+    "nativeMessagingPermissionErrorDesc",
+    "biometricsStatusHelptextDesktopDisconnected",
+    "biometricsStatusHelptextNotEnabledInDesktop",
+    "sessionTimeoutSuppressedByConnectedDevice",
+    "sharedUnlockWithDesktopDescription",
+    "downloadBitwarden",
+    "downloadBitwardenOnAllDevices",
+    "downloadBitwardenApps",
+    "getTheMobileAppDesc"
+  ],
+  "custom": {
+    "extName": "GROWTHSTAR Vault",
+    "extNameBeta": "GROWTHSTAR Vault Beta",
+    "extDesc": "Your GROWTHSTAR passwords, passkeys and notes, kept safe and filled in for you on every site.",
+    "secureDevicesBody": "Save unlimited passwords across unlimited devices. GROWTHSTAR Vault also works with the free Bitwarden apps for your phone and computer.",
+    "sharedUnlockDesktopPermissionDesc": "To use shared unlock, GROWTHSTAR Vault needs permission to talk to the Bitwarden desktop app. When you continue, your browser will ask you to approve it.",
+    "biometricPermissionDesc": "To use biometric unlock, GROWTHSTAR Vault needs permission to talk to the Bitwarden desktop app. When you continue, your browser will ask you to approve it."
+  }
+}

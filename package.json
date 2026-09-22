@@ -1,0 +1,16 @@
+{
+  "name": "growthstar-vault-extension",
+  "private": true,
+  "description": "GROWTHSTAR Vault browser extension: Bitwarden's open-source extension, rebranded and locked to vault.growthstar.app.",
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "brand": "node scripts/apply-branding.mjs",
+    "verify": "node scripts/verify-build.mjs",
+    "smoke": "node scripts/smoke-test.mjs",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

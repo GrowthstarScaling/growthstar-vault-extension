@@ -1,0 +1,18 @@
+{
+  "name": "GROWTHSTAR Vault",
+  "nameBeta": "GROWTHSTAR Vault Beta",
+  "author": "GROWTHSTAR Scaling",
+  "homepage": "https://growthstar.app/vault/",
+  "description": "Your GROWTHSTAR passwords, passkeys and notes, kept safe and filled in for you on every site.",
+  "server": "https://vault.growthstar.app",
+  "welcomeUrl": "https://growthstar.app/vault/",
+  "storeUrl": "https://growthstar.app/vault/",
+  "sourceUrl": "https://github.com/GrowthstarScaling/growthstar-vault-extension",
+  "geckoId": "vault@growthstar.app",
+  "attribution": "Built on open-source Bitwarden code. Not affiliated with Bitwarden, Inc.",
+  "colors": {
+    "vault": "#57928a",
+    "cocoa": "#221710",
+    "cream": "#f3e8d6"
+  }
+}
