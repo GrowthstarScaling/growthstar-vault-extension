@@ -183,6 +183,18 @@ jobs:
             --title "GROWTHSTAR Vault $VER" \
             --notes "Built from Bitwarden $TAG with the GROWTHSTAR branding at $GITHUB_SHA. Branded, checked (verify-build) and tested in a real browser (smoke test). Store upload is a separate, approved step."
 
+      - name: Close the coder's issue for this tag
+        if: needs.plan.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          n=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label needs-coder \
+            --search "\"Upkeep failed: $TAG\" in:title" --json number --jq '.[0].number')
+          if [ -n "$n" ]; then
+            gh issue close "$n" --repo "$GITHUB_REPOSITORY" \
+              --comment "Fixed: GROWTHSTAR Vault $VER built, checked and tested from $TAG."
+          fi
+
       - name: Open a pull request for the coder's fix
         if: startsWith(github.ref, 'refs/heads/upkeep/')
         env:
