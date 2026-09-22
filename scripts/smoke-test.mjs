@@ -68,7 +68,9 @@ async function describe(page, label) {
 
 const ctx = await chromium.launchPersistentContext('', {
   channel: 'chromium',
-  headless: true,
+  // Headless cannot run this extension's UI: the popup stays on its spinner, and Bitwarden's
+  // own unmodified build does exactly the same. CI runs this under xvfb-run.
+  headless: false,
   args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
   viewport: { width: 400, height: 640 },
 });
@@ -111,15 +113,14 @@ try {
   check(logo, 'GROWTHSTAR Vault logo drawn', 'the GROWTHSTAR Vault lockup is not in the popup');
   await popup.screenshot({ path: join(SHOTS, '1-popup.png') });
 
-  // A first-run carousel can sit in front of the sign-in form.
+  // A first-run carousel sits in front of the sign-in form: page through it, then Log in.
   const email = () => popup.locator('input[type="email"], input[formcontrolname="email"]').first();
-  for (let attempt = 0; attempt < 4 && (await email().count()) === 0; attempt++) {
-    const button = popup
-      .getByRole('button', { name: /log in|continue|get started|skip|next/i })
-      .or(popup.getByRole('link', { name: /log in/i }))
-      .first();
-    if ((await button.count()) === 0) break;
-    console.log(`  [popup] clicking "${(await button.innerText().catch(() => '')).trim()}" to reach the sign-in form`);
+  for (let attempt = 0; attempt < 8 && (await email().count()) === 0; attempt++) {
+    const logIn = popup.getByRole('button', { name: /^log in$/i }).first();
+    const next = popup.getByRole('button', { name: /^(next|get started|skip)$/i }).first();
+    const button = (await logIn.isVisible().catch(() => false)) ? logIn : next;
+    if (!(await button.isVisible().catch(() => false))) break;
+    console.log(`  [popup] clicking "${(await button.innerText().catch(() => '')).trim()}"`);
     await button.click().catch(() => {});
     await wait(1500);
   }
